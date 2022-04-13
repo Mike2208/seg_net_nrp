@@ -1,4 +1,5 @@
 import torch
+import os
 from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 from src.model import PredNet
 from src.utils import train_fn, valid_fn
@@ -19,9 +20,10 @@ prd_layers = tuple([l for l in [0] if l < n_layers])
 seg_layers = tuple([l for l in [1, 2] if l < n_layers])
 bu_channels = (64, 128, 256, 512)[:n_layers]
 td_channels = (64, 128, 256, 512)[:n_layers]
+# td_layers = ('C', 'C', 'C', 'C')[:n_layers]  # 'Hgru', 'Illusory', 'Lstm', 'Conv'
 td_layers = ('H', 'H', 'H', 'H')[:n_layers]  # 'Hgru', 'Illusory', 'Lstm', 'Conv'
 dropout_rates = (0.0, 0.0, 0.0, 0.0)[:n_layers]
-device = 'cpu'  # 'cuda', 'cpu'
+device = 'cuda'  # 'cuda', 'cpu'
 
 # Training parameters
 n_epochs_run, n_epochs_save, epoch_to_load = 1000, 5, None
@@ -50,41 +52,42 @@ model_name = \
 model_name = model_name.replace('.', '-').replace(',', '-').replace(' ', '').replace("'", '')
 
 # Dataset
-dataset_type = 'multi_objects_background'  # 'mots', 'mots_sqm', 'nrp', 'handover', 'multi_objects', 'multi_objects_background', 'bmw', 'ovis'
-n_frames, n_backprop_frames, t_start = 55, 5, n_layers
+dataset_dir = r'D:\DL\datasets\nrp'
+dataset_type = 'multi_shelf'  # 'mots', 'mots_sqm', 'nrp', 'handover', 'multi_shelf', 'multi_small', 'bmw', 'ovis'
+n_frames, n_backprop_frames, t_start = 59, 5, n_layers
 augmentation, remove_ground, tr_ratio = True, True, 0.8
 
 if dataset_type == 'nrp':
-    # dataset_path = r'D:\DL\datasets\nrp\training_room\training_room_dataset_00.h5'  # 1000 x 128 x 128 x 3
-    dataset_path = r'D:\DL\datasets\nrp\training_room\training_room_dataset_01.h5'  # 300 x 320 x 320 x 3
+    # dataset_path = os.path.join(dataset_dir, 'training_room', 'training_room_dataset_00.h5')  # 1000 x 128 x 128 x 3
+    dataset_path = os.path.join(dataset_dir, 'training_room', 'training_room_dataset_01.h5')  # 300 x 320 x 320 x 3
     n_samples, n_classes = 300, 3 + int(not remove_ground)
     train_dl, valid_dl = get_nrp_dataloaders(dataset_path, tr_ratio, n_samples, 
                                              batch_size_train, batch_size_valid,
                                              n_classes, augmentation=augmentation,
                                              remove_ground=remove_ground, speedup_factor=1)
 
-elif 'mots' in dataset_type:
-    dataset_path = r'D:\DL\datasets\kitti\mots'
-    sqm_dataset_path = r'D:\DL\datasets\kitti\mots\sqm'
-    n_classes = 3 + int(not remove_ground)
-    train_dl, valid_dl = get_mots_dataloaders(dataset_path, tr_ratio, batch_size_train,
-                                              batch_size_valid, n_frames, augmentation=augmentation,
-                                              n_classes=n_classes, remove_ground=remove_ground)
-    if 'sqm' in dataset_type:
-        sqm_losses = []
-        sqm_dl = get_sqm_dataloaders(sqm_dataset_path, n_classes, remove_ground)
-
-elif dataset_type in ['handover', 'multi_objects', 'multi_objects_background', 'bmw']:
-    dataset_path = r'D:\DL\datasets\nrp' + fr'\{dataset_type}'
+elif dataset_type in ['handover', 'multi_shelf', 'multi_small', 'bmw']:
+    dataset_path = os.path.join(dataset_dir, dataset_type)
     dataloader_fn_dict = {'handover': get_handover_dataloaders,
-                          'multi_objects': get_multi_dataloaders,
-                          'multi_objects_background': get_multi_dataloaders,
+                          'multi_small': get_multi_dataloaders,
+                          'multi_shelf': get_multi_dataloaders,
                           'bmw': get_bmw_dataloaders}
     dataloader_fn = dataloader_fn_dict[dataset_type]
     train_dl, valid_dl, n_classes = dataloader_fn(dataset_path, tr_ratio,
                                                   batch_size_train, batch_size_valid, n_frames,
                                                   augmentation=augmentation, remove_ground=remove_ground)
-
+                                                  
+# elif 'mots' in dataset_type:
+#     dataset_path = r'D:\DL\datasets\kitti\mots'
+#     sqm_dataset_path = r'D:\DL\datasets\kitti\mots\sqm'
+#     n_classes = 3 + int(not remove_ground)
+#     train_dl, valid_dl = get_mots_dataloaders(dataset_path, tr_ratio, batch_size_train,
+#                                               batch_size_valid, n_frames, augmentation=augmentation,
+#                                               n_classes=n_classes, remove_ground=remove_ground)
+#     if 'sqm' in dataset_type:
+#         sqm_losses = []
+#         sqm_dl = get_sqm_dataloaders(sqm_dataset_path, n_classes, remove_ground)
+# 
 # elif dataset_type == 'ovis':
 #     dataset_path = r'D:\DL\datasets\ovis'
 #     train_dl, valid_dl, n_classes = get_ovis_dataloaders(dataset_path, tr_ratio,
@@ -97,6 +100,7 @@ if not load_model:
     model = PredNet(model_name,
                     n_classes,
                     n_layers,
+                    td_layers,
                     seg_layers,
                     bu_channels,
                     td_channels,
