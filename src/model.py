@@ -9,14 +9,43 @@ from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
 
 
 class PredNet(nn.Module):
-    def __init__(self, model_name, n_classes, n_layers, seg_layers,
+    def __init__(self, model_name, n_classes, n_layers, td_layers, seg_layers,
                  bu_channels, td_channels, do_segmentation, device) -> None:
+        ''' Create a PredNet model, initialize its states, create a checkpoint
+            folder and put the model on the correct device (cpu or gpu).
+        
+        Parameters
+        ----------
+        model_name : str
+            Name of the model (to identify the checkpoint folder when loading).
+        n_classes : int
+            Number of classes in the segmentation masks to predict.
+        n_layers : int
+            Number of layers in the bottom-up and top-down networks.
+        td_layers : list of str
+            Type of cell used in the top-down computations.
+        seg_layers : list of str
+            What td_layers are used by the segmentation decoder.
+        bu_channels : list of int
+            Number of channels in the bottom-up layers.
+        td_channels : list of int
+            Number of channels in the top-down layers.
+        do_segmentation : bool
+            Whether to decode segmentation masks.
+        device : torch.device
+            Device to use for the computation ('cpu', 'cuda').
+
+        Returns
+        -------
+        None.
+        '''
         super(PredNet, self).__init__()
 
         # Model parameters
         self.model_name = model_name
         self.n_classes = n_classes
         self.n_layers = n_layers
+        self.td_layers = td_layers
         self.seg_layers = seg_layers
         if bu_channels[0] != 3:
             bu_channels = (3,) + bu_channels[:-1]  # worst coding ever
@@ -45,7 +74,10 @@ class PredNet(nn.Module):
         td_conv = []
         for l in range(self.n_layers):  # "2", because error is torch.cat([pos, neg])
             in_channels = 2 * bu_channels[l] + (td_channels[l + 1] if l < n_layers - 1 else 0)
-            td_conv.append(hConvGRUCell(in_channels, td_channels[l], kernel_size=5))  # implicit padding
+            if td_layers[l] == 'H':
+                td_conv.append(hConvGRUCell(in_channels, td_channels[l], kernel_size=5))  # implicit padding
+            elif td_layers[l] == 'C':
+                td_conv.append(nn.Conv2d(in_channels, td_channels[l], kernel_size=5, padding=2))
         self.td_conv = nn.ModuleList(td_conv)
         self.td_upsample = nn.ModuleList([nn.Upsample(scale_factor=2) for _ in range(n_layers - 1)])
 
@@ -59,6 +91,24 @@ class PredNet(nn.Module):
         os.makedirs(f'./ckpt/{model_name}/', exist_ok=True)
 
     def forward(self, A, frame_idx):
+        ''' Forward pass of the PredNet.
+        
+        Parameters
+        ----------
+        A : torch.Tensor
+            Input image (from a batch of input sequences).
+        frame_idx : int
+            Index of the current frame in the sequence.
+
+        Returns
+        -------
+        E_pile : list of torch.Tensor
+            Activity of all errors units (bottom-up pass).
+        img_prediction : torch.Tensor
+            Prediction of the next frame input (first layer of the network).
+        seg_prediction : torch.Tensor
+            Prediction of the segmentation mask (if do_segmentation is True).
+        '''
         # Initialize outputs of this step, as well as internal states, if necessary
         batch_dims = A.size()
         batch_size, _, h, w = batch_dims
@@ -86,7 +136,10 @@ class PredNet(nn.Module):
             if l < self.n_layers - 1:
                 td_output = self.td_upsample[l](self.R_state[l + 1])
                 td_input = torch.cat((td_input, td_output), dim=1)
-            R_pile[l] = self.td_conv[l](td_input, self.R_state[l])
+            if self.td_layers[l] == 'H':
+                R_pile[l] = self.td_conv[l](td_input, self.R_state[l])
+            elif self.td_layers[l] == 'C':
+                R_pile[l] = self.td_conv[l](td_input)
         
         # Image segmentation
         if self.do_segmentation:
@@ -103,11 +156,29 @@ class PredNet(nn.Module):
         return E_pile, img_prediction, img_segmentation
 
     def save_model(self, optimizer, scheduler, train_losses, valid_losses):
+        ''' Save the model and the training history.
+        
+        Parameters
+        ----------
+        optimizer : torch.optim.Optimizer
+            Optimizer used to train the model.
+        scheduler : torch.optim.lr_scheduler
+            Learning rate scheduler used to train the model.
+        train_losses : list of float
+            Training losses of the model.
+        valid_losses : list of float
+            Validation losses of the model.
+
+        Returns
+        -------
+        None
+        '''
         last_epoch = scheduler.last_epoch
         torch.save({
             'model_name': self.model_name,
             'n_classes': self.n_classes,
             'n_layers_img': self.n_layers,
+            'td_layers': self.td_layers,
             'seg_layers': self.seg_layers,
             'bu_channels': self.bu_channels,
             'td_channels': self.td_channels,
@@ -132,6 +203,24 @@ class PredNet(nn.Module):
 
     @classmethod
     def load_model(cls, model_name, n_epochs_run=None, epoch_to_load=None, lr_params=None):
+        ''' Load a model from a checkpoint.
+        
+        Parameters
+        ----------
+        model_name : str
+            Name of the model (used for retrieve the checkpoint folder).
+        n_epochs_run : int
+            Number of epochs the model has been trained on.
+        epoch_to_load : int
+            Epoch to load a checkpoint from.
+        lr_params : dict
+            Learning rate parameters (for optimizer and scheduler).
+
+        Returns
+        -------
+        model : Model
+            Loaded model.
+        '''
         ckpt_dir = f'./ckpt/{model_name}/'
         list_dir = [c for c in os.listdir(ckpt_dir) if '.pt' in c]
         ckpt_path = list_dir[-1]  # take last checkpoint (default)
@@ -143,6 +232,7 @@ class PredNet(nn.Module):
             model_name=model_name,
             n_classes=save['n_classes'],
             n_layers=save['n_layers_img'],
+            td_layers=save['td_layers'],
             seg_layers=save['seg_layers'],
             bu_channels=save['bu_channels'],
             td_channels=save['td_channels'],
@@ -174,6 +264,24 @@ class PredNet(nn.Module):
 
 class Decoder_2D_bis(nn.Module):
     def __init__(self, decoder_layers, input_channels, output_channels, output_fn):
+        ''' Decoder for any set of 2D images (e.g., segmentation masks).
+            This version is in development and does not work yet.
+        
+        Parameters
+        ----------
+        decoder_layers : list of int
+            Layers of PredNet from which the 2D labels are decoded.
+        input_channels : list of int
+            Number of channels of in the decoded layers.
+        output_channels : int
+            Number of channels of the output to decode.
+        output_fn : str
+            Activation function of the decoder.
+
+        Returns
+        -------
+        None
+        '''
         super(Decoder_2D_bis, self).__init__()
         self.decoder_layers = decoder_layers
         hidden_channels = 32
@@ -189,6 +297,20 @@ class Decoder_2D_bis(nn.Module):
         self.out_conv = nn.Sequential(nn.Conv2d(hidden_channels_out, output_channels, 1), output_fn)
         
     def forward(self, R_pile):
+        ''' Forward pass of the decoder.
+        
+        Parameters
+        ----------
+        R_pile : list of torch.Tensor
+            List of tensors of shape (batch_size, channels, height, width)
+            containing the activity of the latent units of the PredNet.
+
+        Returns
+        -------
+        torch.Tensor
+            Tensor of shape (batch_size, channels, height, width)
+            containing the decoded output.
+        '''
         hidden_input = [self.up_conv[i](R_pile[l]) for i, l in enumerate(self.decoder_layers)]
         hidden_input = F.relu(torch.cat(hidden_input, dim=1))
         return self.out_conv(hidden_input)
@@ -196,6 +318,24 @@ class Decoder_2D_bis(nn.Module):
 
 class Decoder_2D(nn.Module):
     def __init__(self, decoder_layers, input_channels, n_output_channels, output_fn):
+        ''' Decoder for any set of 2D images (e.g., segmentation masks).
+            This version is in development and does not work yet.
+        
+        Parameters
+        ----------
+        decoder_layers : list of int
+            Layers of PredNet from which the 2D labels are decoded.
+        input_channels : list of int
+            Number of channels of in the decoded layers.
+        n_output_channels : int
+            Number of channels of the output to decode.
+        output_fn : str
+            Activation function of the decoder.
+
+        Returns
+        -------
+        None
+        '''
         super(Decoder_2D, self).__init__()
         self.decoder_layers = decoder_layers
         decoder_upsp = []
@@ -213,6 +353,20 @@ class Decoder_2D(nn.Module):
             output_fn)
   
     def forward(self, R_pile):
+        ''' Forward pass of the decoder.
+        
+        Parameters
+        ----------
+        R_pile : list of torch.Tensor
+            List of tensors of shape (batch_size, channels, height, width)
+            containing the activity of the latent units of the PredNet.
+
+        Returns
+        -------
+        torch.Tensor
+            Tensor of shape (batch_size, channels, height, width)
+            containing the decoded output.
+        '''
         D = R_pile[max(self.decoder_layers)]
         D = self.decoder_upsp[-1](D) if max(self.decoder_layers) > 0 else self.decoder_conv(D)
         for l in reversed(range(max(self.decoder_layers))):

@@ -18,7 +18,6 @@ dic_loss_fn = DiceLoss()
 
 def train_fn(train_dl, model, optimizer, loss_weight, remove_ground,
              t_start, n_backprop_frames, epoch, plot_gif=True):
-
     # Train the network for one epoch
     model.train()
     plot_loss_train = []  # 0.0
