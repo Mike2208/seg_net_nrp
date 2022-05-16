@@ -2,28 +2,57 @@ import torch
 import numpy as np
 import imageio
 from src.model import PredNet
+from src.dataset_fn_multi2 import get_multi_dataloaders
 
-def load_image_sequence(folder_path, n_frames):
-    ''' Loads a sequence of images from a given folder path.
+def main():
+    ''' Test the PredNet model on a sequence of images.'''
     
-    Parameters
-    ----------
-    folder_path : str
-        Path to the folder containing the images.
-    n_frames : int
-        Number of frames to load.
-    
-    Returns
-    -------
-    images : np.array
-        Array of shape (batch_size, 3, height, width, n_frames)
-        containing the images.
-    '''
-    list_of_torch_tensors = torch.rand(1, 3, 256, 256, 30)  # TODO: load from folder_path
-    list_of_torch_tensors = list_of_torch_tensors[..., :n_frames]
-    return list_of_torch_tensors  # of shape (1, n_channels, width, height)
+    # Load model
+    device = 'cuda'
+    model_name = 'Michael_ckpt'
+    model, _, _, _, _ = PredNet.load_model(model_name)
+    model.eval()
+    model.to(device)
 
-def plot_seg_image_sequence(seg_image_sequence):
+    # Dataset parameters
+    data_params = {
+        'batch_size_train': 1,
+        'batch_size_valid': 1,
+        'n_frames': 59,
+        'tr_ratio': 0.8,
+        'remove_ground': True,
+        'augmentation': True,
+        'dataset_dir': 'multi_shelf',
+        'dataset_path': {
+            'multi_shelf': r'D:\DL\datasets\nrp\multi_shelf',
+            'multi_small': r'D:\DL\datasets\nrp\multi_small'}}
+    dataloader_fn = {'multi_shelf': get_multi_dataloaders,
+                     'multi_small': get_multi_dataloaders}[data_params['dataset_dir']]
+    _, valid_dl, _ = dataloader_fn(**data_params)
+    
+    # Main run loop
+    n_samples_to_plot = 1
+    seg_pred_sequence = []
+    with torch.no_grad():
+        for batch_idx, (input_sequence, label_sequence) in enumerate(valid_dl):
+
+            # Run the segmentation model model
+            if batch_idx < n_samples_to_plot:
+                for t in range(input_sequence.shape[-1]):
+                    image = input_sequence[..., t].to(device=device)
+                    _, _, seg_pred = model(image, t)
+                    seg_pred_numpy = seg_pred.cpu().numpy()
+                    seg_pred_sequence.append(seg_pred_numpy)
+    
+                # Plot the segmentation prediction
+                plot_seg_pred_sequence(seg_pred_sequence, batch_idx)
+            
+            # Stop after n_samples_to_plot samples
+            else:
+                break
+
+
+def plot_seg_pred_sequence(seg_pred_sequence, batch_idx):
     ''' Plots a sequence of segmentation images.
     
     Parameters
@@ -31,20 +60,24 @@ def plot_seg_image_sequence(seg_image_sequence):
     seg_image_sequence : np.array
         Array of shape (batch_size, 3, height, width, n_frames)
         containing the segmentation images.
+    batch_idx : int
+        Index of the batch being plotted.
     
     Returns
     -------
     None
     '''
-    n_frames = len(seg_image_sequence)
-    seg_image_stack = np.stack(seg_image_sequence, axis=-1)
-    seg_image_rgb = onehot_to_rgb(seg_image_stack).transpose(0, 2, 3, 1, 4)
-    seg_image_rgb = (255 * seg_image_rgb).astype(np.uint8)
-    for sample_idx, seg_sample in enumerate(seg_image_rgb):
-        seg_sample_list = [seg_sample[..., t] for t in range(n_frames)]
-        imageio.mimsave(f'./seg_output_{sample_idx:02}.gif',
-                        seg_sample_list,
+    n_frames = len(seg_pred_sequence)
+    seg_pred_stack = np.stack(seg_pred_sequence, axis=-1)
+    seg_pred_rgb = onehot_to_rgb(seg_pred_stack).transpose(0, 2, 3, 1, 4)
+    seg_pred_rgb = (255 * seg_pred_rgb).astype(np.uint8)
+    for sample_idx, sample in enumerate(seg_pred_rgb):
+        sample_list = [sample[..., t] for t in range(n_frames)]
+        gif_path = f'./seg_output_batch{batch_idx:03}_sample_{sample_idx:03}.gif'
+        imageio.mimsave(gif_path,
+                        sample_list,
                         duration=0.1)
+
 
 def onehot_to_rgb(onehot_array):
     ''' Converts a one-hot encoded array to an RGB array.
@@ -63,13 +96,14 @@ def onehot_to_rgb(onehot_array):
     '''
     batch_size, num_classes, w, h, n_frames = onehot_array.shape
     rgb_array = np.zeros((batch_size, 3, w, h, n_frames))
-    hue_space = np.linspace(0.0, 1.0, num_classes + 1)[:-1]
+    hue_space = np.linspace(0.0, 1.0, num_classes + 1)[:-1] 
     rgb_space = [hsv_to_rgb(hue) for hue in hue_space]
     for n in range(num_classes):
-        class_tensor = onehot_array[:, n]
+        class_array = onehot_array[:, n]
         for c, color in enumerate(rgb_space[n]):
-            rgb_array[:, c] += color * class_tensor
+            rgb_array[:, c] += color * class_array
     return rgb_array
+
 
 def hsv_to_rgb(hue):
     ''' Converts a hue value to an RGB color.
@@ -90,33 +124,6 @@ def hsv_to_rgb(hue):
         [0, v, 1], [v, 0, 1], [1, 0, v]]
     return hsv_space[int(hue * 6)]
 
+
 if __name__ == '__main__':
-    ''' Test the PredNet model on a sequence of images.'''
-
-    # Load the model
-    device = 'cuda'  # or 'cpu'
-    model = PredNet(model_name='my_model',
-                    n_classes=5,
-                    n_layers=3,
-                    seg_layers=(1, 2),
-                    bu_channels=(64, 128, 256),
-                    td_channels=(64, 128, 256),
-                    do_segmentation=True,
-                    device=device)
-    model.eval()
-
-    # Load the images
-    seg_image_sequence = []
-    image_sequence = load_image_sequence()
-    n_frames = image_sequence.shape[-1]
-    
-    # Predict the segmentation
-    with torch.no_grad():
-        for t in range(n_frames):
-            image = image_sequence[..., t].to(device=device)
-            _, _, seg_image = model(image, t)
-            seg_image_numpy = seg_image.cpu().numpy()
-            seg_image_sequence.append(seg_image_numpy)
-    
-    # Plot the segmentation
-    plot_seg_image_sequence(seg_image_sequence)
+    main()
