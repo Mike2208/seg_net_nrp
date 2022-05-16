@@ -12,7 +12,7 @@ import threading
 import rospy
 
 class PrednetSegmentation:
-    def __init__(self, name, gpu_factor, device, batch_size, n_channels, im_w, im_h, n_frames, class_names, cam_topic):
+    def __init__(self, name, model_name, gpu_factor, device):
         """Initialize ROS comm and Prednet PyTorch module """
         #super().__init__(name)
         
@@ -27,16 +27,9 @@ class PrednetSegmentation:
         self.n_frames = n_frames
 
         torch.cuda.set_per_process_memory_fraction(gpu_factor, 0)
-        self.model = PredNet(model_name='my_model',
-                            n_classes=len(class_names),
-                            n_layers=3,
-                            seg_layers=(1, 2),
-                            bu_channels=(64, 128, 256),
-                            td_channels=(64, 128, 256),
-                            do_segmentation=True,
-                            device=device)
-        
+        self.model, _, _, _, _ = PredNet.load_model(model_name)
         self.model.eval()
+        self.model.to(device)
 
         self.ros_seg_pubs = [ rospy.Publisher("/prednet_segmentation/{}/image".format(name), Image, queue_size=10) \
                                 for name in class_names ]
@@ -132,16 +125,11 @@ if __name__ == "__main__":
             "cheez_its"
         ]
 
-        module = PrednetSegmentation("prednet_segmentation",
+        module = PrednetSegmentation("prednet_segmentation", 
+                                     model_name="TA1_BU(64-128-256)_TD(64-128-256)_TL(H-H-H)_PL(0-)_SL(1-2)_DR(0-0-0)"
                                      gpu_factor=gpu_fact,
-                                     device=device,
-                                     batch_size=batch_size, 
-                                     n_channels=n_channels, 
-                                     im_w=im_w, im_h=im_h, 
-                                     n_frames=n_frames,
-                                     class_names=seg_class_names,
-                                     cam_topic=cam_topic)
-        
+                                     device=device)      
+  
         #while not rospy.is_shutdown():
         #    module.RunOnce()
         #    time.sleep(1.0/120.0)
