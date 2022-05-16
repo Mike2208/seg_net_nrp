@@ -12,7 +12,7 @@ import threading
 import rospy
 
 class PrednetSegmentation:
-    def __init__(self, name, model_name, gpu_factor, device):
+    def __init__(self, name, model_name, gpu_factor, device, class_names):
         """Initialize ROS comm and Prednet PyTorch module """
         #super().__init__(name)
         
@@ -126,9 +126,10 @@ if __name__ == "__main__":
         ]
 
         module = PrednetSegmentation("prednet_segmentation", 
-                                     model_name="TA1_BU(64-128-256)_TD(64-128-256)_TL(H-H-H)_PL(0-)_SL(1-2)_DR(0-0-0)"
+                                     model_name="TA1_BU(64-128-256)_TD(64-128-256)_TL(H-H-H)_PL(0-)_SL(1-2)_DR(0-0-0)",
                                      gpu_factor=gpu_fact,
-                                     device=device)      
+                                     device=device,
+                                     class_names=seg_class_names)      
   
         #while not rospy.is_shutdown():
         #    module.RunOnce()
