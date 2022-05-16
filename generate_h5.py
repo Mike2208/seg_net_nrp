@@ -40,11 +40,11 @@ img_train_array_shape = (n_sequences_train, n_channels, h, w, n_frames_max)
 img_train_array = np.zeros(img_train_array_shape, dtype=np.uint8)
 img_valid_array_shape = (n_sequences_valid, n_channels, h, w, n_frames_max)
 img_valid_array = np.zeros(img_valid_array_shape, dtype=np.uint8)
-for sequence_id, sequence_path in enumerate(os.listdir(sample_dir)):
+for sequence_id, sequence_path in enumerate(sorted(os.listdir(sample_dir))):
     sequence_dir = os.path.join(sample_dir, sequence_path)
     if sequence_id < n_sequences_train + n_sequences_valid:
         print(f'\rDoing image sequence {sequence_id:04}', end='')
-        for frame_id, img_path in enumerate(os.listdir(sequence_dir)):
+        for frame_id, img_path in enumerate(sorted(os.listdir(sequence_dir))):
             if frame_id < n_frames_max:
                 img_full_path = os.path.join(sequence_dir, img_path)
                 with Image.open(img_full_path) as read_img:
@@ -63,12 +63,12 @@ seg_train_array_shape = (n_sequences_train, 1, h, w, n_frames_max)
 seg_train_array = np.zeros(seg_train_array_shape, dtype=np.uint8)
 seg_valid_array_shape = (n_sequences_valid, 1, h, w, n_frames_max)
 seg_valid_array = np.zeros(seg_valid_array_shape, dtype=np.uint8)
-for sequence_id, segment_path in enumerate(os.listdir(segment_dir)):
+for sequence_id, segment_path in enumerate(sorted(os.listdir(segment_dir))):
     sequence_dir = os.path.join(segment_dir, segment_path)
     frame_id, frame_label = -1, -1
     if sequence_id < n_sequences_train + n_sequences_valid:
         print(f'\rDoing label sequence {sequence_id:04}', end='')
-        for segment_path in os.listdir(sequence_dir):
+        for segment_path in sorted(os.listdir(sequence_dir)):
             new_frame_label = int(segment_path.split('seg_img_')[1].split('_')[1])
             if frame_label != new_frame_label:
                 frame_id += 1
