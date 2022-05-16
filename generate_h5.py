@@ -14,9 +14,23 @@ label_id_map = {'a_marbles': 0, 'b_marbles': 1, 'apple': 2, 'banana': 3, 'shelf'
 # label_id_map = {'chips_can': 0, 'hammer': 1, 'power_drill': 2,
 #                 'scissors': 3, 'timer': 4, 'adjustable_wrench': 5,
 #                 'flat_screwdriver': 6, 'phillips_screwdriver': 7}
+label_id_map = {
+    'a_marbles': 0,
+    'apple': 1,
+    'banana': 2,
+    'shelf': 3,
+    'adjustable_wrench': 4,
+    'flat_screwdriver': 5,
+    'mug': 6,
+    'phillips_screwdriver': 7,
+    'plate': 8,
+    'power_drill': 9,
+    'sugar_box': 10,
+    'tomato_soup_can': 11
+    }
 
-n_sequences_train = 1600
-n_sequences_valid = 400
+n_sequences_train = 1300
+n_sequences_valid = 300
 n_frames_max = 59
 h, w = 320, 320
 n_channels = 3
