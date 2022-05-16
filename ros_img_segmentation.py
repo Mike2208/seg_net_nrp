@@ -120,9 +120,18 @@ if __name__ == "__main__":
         cam_topic="/camera/camera/image"
 
         seg_class_names = [
-            "hammer",
-            "cube",
-            "cheez_its"
+                'a_marbles',
+                'apple',
+                'banana',
+                'shelf',
+                'adjustable_wrench',
+                'flat_screwdriver',
+                'mug',
+                'phillips_screwdriver',
+                'plate',
+                'power_drill',
+                'sugar_box',
+                'tomato_soup_can'
         ]
 
         module = PrednetSegmentation("prednet_segmentation", 
