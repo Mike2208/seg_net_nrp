@@ -12,9 +12,8 @@ import threading
 import rospy
 
 class PrednetSegmentation:
-    def __init__(self, name, model_name, gpu_factor, device, class_names):
+    def __init__(self, name, model_name, gpu_factor, device, class_names, n_frames):
         """Initialize ROS comm and Prednet PyTorch module """
-        #super().__init__(name)
         
         self.cv_bridge = CvBridge()
 
@@ -23,8 +22,9 @@ class PrednetSegmentation:
 
         self.device = device
         self.batch_size = batch_size
-        self.n_channels = n_channels
+        self.n_channels = 3
         self.n_frames = n_frames
+        self.n_classes = len(class_names)
 
         torch.cuda.set_per_process_memory_fraction(gpu_factor, 0)
         self.model, _, _, _, _ = PredNet.load_model(model_name)
@@ -40,10 +40,6 @@ class PrednetSegmentation:
         """Execute one segmentation step. """
         # Wait for first frame
         if not len(self.frames):
-            #res = ModuleExecutionResult()
-            #res.PauseTime = rospy.Time(0.0)
-            #res.ExecutionTime = rospy.Time(0.01)
-            #return res
             print("No frames received")
             return
         
@@ -56,20 +52,14 @@ class PrednetSegmentation:
                     im = im[None, :, :, :]
                     image = im.to(device=device)
                     _, _, seg_image = self.model(image, t)
-                    seg_image_numpy = seg_image.cpu().numpy()   # Shape of (1, n_channels, width, height)
+                    seg_image_numpy = seg_image.cpu().numpy()   # Shape of (1, n_classes, width, height)
                     seg_image_sequence.append(seg_image_numpy)
                     t += 1
 
         # Publish segmentation masks
-        for i in range(self.n_channels):
+        for i in range(self.n_classes):
             ros_img = self.cv_bridge.cv2_to_imgmsg(seg_image_sequence[-1][0,i,:,:], encoding="passthrough")
             self.ros_seg_pubs[i].publish(ros_img)
-
-
-        #res = ModuleExecutionResult()
-        #res.PauseTime = rospy.Time(0.1)
-        #res.ExecutionTime = rospy.Time(1.0)
-        #return res
 
     def _convert_cv2_to_torch(self, cv_frame):
         """Convert from cv2 image to pytorch tensor"""
@@ -99,7 +89,6 @@ class PrednetSegmentation:
 
     def _ros_frame_cb(self, data):
         # Push new frame onto stack
-        #print("Adding frame")
         self._push_ros_frame(data)
 
         self.ExecuteStep(0.0)
@@ -112,7 +101,6 @@ if __name__ == "__main__":
         gpu_fact = rospy.get_param("segmentation_gpu_factor", 1.0)
 
         batch_size = 1
-        n_channels = 3
         im_w, im_h, n_channels = (300, 300, 3)
         n_frames = 30
         device = 'cuda'
@@ -123,7 +111,6 @@ if __name__ == "__main__":
                 'a_marbles',
                 'apple',
                 'banana',
-                'shelf',
                 'adjustable_wrench',
                 'flat_screwdriver',
                 'mug',
@@ -138,7 +125,8 @@ if __name__ == "__main__":
                                      model_name="TA1_BU(64-128-256)_TD(64-128-256)_TL(H-H-H)_PL(0-)_SL(1-2)_DR(0-0-0)",
                                      gpu_factor=gpu_fact,
                                      device=device,
-                                     class_names=seg_class_names)      
+                                     class_names=seg_class_names,
+                                     n_frames=n_frames)      
   
         #while not rospy.is_shutdown():
         #    module.RunOnce()
