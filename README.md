@@ -26,16 +26,7 @@ The node subscribes to a camera image topic, here `/camera/camera/image`. It reg
 
 At the moment, the model can segment the following meshes from the YCB dataset:
 
-- a\_marbles
-- apple
-- banana
-- shelf
-- adjustable\_wrench
-- flat\_screwdriver
-- mug
-- phillips\_screwdriver
 - plate
-- power\_drill
 - sugar\_box
 - tomato\_soup\_can
 
