@@ -24,7 +24,11 @@ class PrednetSegmentation:
         self.batch_size = batch_size
         self.n_channels = 3
         self.n_frames = n_frames
+
         self.n_classes = len(class_names)
+
+        self.active_class_indices = (7, 9, 10)
+        active_class_names = [ class_names[i] for i in self.active_class_indices ]
 
         torch.cuda.set_per_process_memory_fraction(gpu_factor, 0)
         self.model, _, _, _, _ = PredNet.load_model(model_name)
@@ -32,7 +36,7 @@ class PrednetSegmentation:
         self.model.to(device)
 
         self.ros_seg_pubs = [ rospy.Publisher("/prednet_segmentation/{}/image".format(name), Image, queue_size=10) \
-                                for name in class_names ]
+                                for name in active_class_names ]
 
         self.ros_frame_sub = rospy.Subscriber(cam_topic, Image, self._ros_frame_cb)
 
@@ -57,7 +61,7 @@ class PrednetSegmentation:
                     t += 1
 
         # Publish segmentation masks
-        for i in range(self.n_classes):
+        for i in self.active_class_indices:
             ros_img = self.cv_bridge.cv2_to_imgmsg(seg_image_sequence[-1][0,i,:,:], encoding="passthrough")
             self.ros_seg_pubs[i].publish(ros_img)
 
