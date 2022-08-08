@@ -61,8 +61,8 @@ class PrednetSegmentation:
                     t += 1
 
         # Publish segmentation masks
-        for i in self.active_class_indices:
-            ros_img = self.cv_bridge.cv2_to_imgmsg(seg_image_sequence[-1][0,i,:,:], encoding="passthrough")
+        for i in range(0, len(self.active_class_indices)):
+            ros_img = self.cv_bridge.cv2_to_imgmsg(seg_image_sequence[-1][0, self.active_class_indices[i], :, :], encoding="passthrough")
             self.ros_seg_pubs[i].publish(ros_img)
 
     def _convert_cv2_to_torch(self, cv_frame):
