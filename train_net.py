@@ -18,7 +18,7 @@ def main():
 
     # Dataset parameters
     data_params = {
-        'batch_size_train': 4,
+        'batch_size_train': 4,      #DEC If I run out of memory
         'batch_size_valid': 16,
         'n_frames': 50,
         'tr_ratio': 0.8,
@@ -41,16 +41,16 @@ def main():
     train_dl, valid_dl, n_classes = dataloader_fn(**data_params)
 
     # Model parameters
-    n_layers = 3
+    n_layers = 3        #INC
     model_params = {
         'n_layers': n_layers,
         'do_time_aligned': True,
         'n_classes': n_classes,
         'td_layers': ('H', 'H', 'H', 'H', 'H', 'H')[:n_layers],  # 'Hgru', 'Illusory', 'Lstm', 'Conv'
         'img_layers': tuple([l for l in [0, 2] if l < n_layers]),  # set as [] for not using it
-        'seg_layers': tuple([l for l in [0, 1] if l < n_layers]),  # set as [] for not using it
-        'bu_channels': (64, 128, 256, 512, 1024)[:n_layers],
-        'td_channels': (64, 128, 256, 512, 1024)[:n_layers],
+        'seg_layers': tuple([l for l in [0, 1] if l < n_layers]),  # set as [] for not using it     #INC Change to [0, 1, 2, 3]
+        'bu_channels': (64, 128, 256, 512, 1024)[:n_layers],  #INC
+        'td_channels': (64, 128, 256, 512, 1024)[:n_layers],  #INC
         'device': 'cuda'}  # 'cuda', 'cpu'
 
     # Loss parameters
